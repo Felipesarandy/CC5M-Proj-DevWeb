@@ -1,117 +1,74 @@
 ## Projeto 1 Bimestre - Desenvolvimento de Sistemas para Web
 
-API REST de catálogo de livros usando apenas a biblioteca padrão do Python
-(`http.server`). Sem dependências externas.
+API REST de catálogo de livros usando apenas a biblioteca padrão do Python (`http.server`). Sem dependências externas.
 
-## Como rodar o servidor
+**Integrantes:** _(preencher)_
 
-Windows:
-
-```
-cd D:\UVV\DevWeb1B\CC5M-Proj-DevWeb
-python servidor.py
-```
-
-Linux e macOS:
+## Como rodar
 
 ```
-cd CC5M-Proj-DevWeb
-python3 servidor.py
+python servidor.py      # Windows
+python3 servidor.py     # Linux e macOS
 ```
 
-O servidor sobe em `http://localhost:8000` já com três livros de exemplo
-carregados por `carregar_dados_exemplo()`. `CTRL+C` encerra.
+Sobe em `http://localhost:8000` com três livros de exemplo. `CTRL+C` encerra.
 
-## Recursos e métodos
+Para os testes, com o servidor rodando em outro terminal:
 
-| Método    | URI            | Efeito                                  |
-|-----------|----------------|-----------------------------------------|
-| `GET`     | `/livros`      | Lista todos os livros                   |
-| `POST`    | `/livros`      | Cria um livro                           |
-| `GET`     | `/livros/{id}` | Retorna um livro                        |
-| `PUT`     | `/livros/{id}` | Substitui um livro por inteiro          |
-| `DELETE`  | `/livros/{id}` | Remove um livro                         |
-| `HEAD`    | ambas          | Mesmos headers do `GET`, sem corpo      |
-| `OPTIONS` | ambas          | Anuncia os métodos aceitos em `Allow`   |
+```
+bash testes.sh
+```
+
+São 26 casos cobrindo os caminhos felizes e todos os erros. O script compara o status esperado com o obtido, confere os headers `Location` e `Allow`, e termina com `X/26 passaram`. Rode com o servidor recém-iniciado, porque os casos dependem dos ids 1, 2 e 3 de exemplo e da ordem de execução.
+
+## Recursos
+
+| Método | `/livros` | `/livros/{id}` |
+|---|---|---|
+| `GET` | lista os livros | retorna um livro |
+| `POST` | cria um livro | — |
+| `PUT` | — | substitui o livro por inteiro |
+| `DELETE` | — | remove o livro |
+| `HEAD` | headers do `GET`, sem corpo | headers do `GET`, sem corpo |
+| `OPTIONS` | métodos aceitos em `Allow` | métodos aceitos em `Allow` |
 
 ## Códigos de status
 
-| Código | Quando é devolvido                                                          |
-|--------|-----------------------------------------------------------------------------|
-| `200`  | `GET` ou `PUT` bem-sucedido                                                  |
-| `201`  | `POST` criou o livro; traz o header `Location: /livros/{id}`                  |
-| `204`  | `DELETE` removeu o livro, ou `OPTIONS` respondeu; sem corpo                   |
-| `400`  | Erro **sintático**: JSON malformado, corpo vazio, corpo que não é objeto JSON, `Content-Length` ausente, não numérico, negativo ou acima de 1 MiB |
-| `404`  | Rota inexistente, ou livro com aquele id não existe                          |
-| `405`  | Método não aceito naquela rota; sempre acompanhado do header `Allow`          |
-| `415`  | `Content-Type` da requisição não é `application/json`                        |
-| `422`  | Erro **semântico**: o JSON é válido, mas os dados do livro não passam em `validar_livro()` |
-| `500`  | Exceção inesperada; o traceback fica só no console do servidor               |
-| `501`  | Verbo HTTP desconhecido pelo servidor (`TRACE`, `CONNECT`, etc.)             |
+| Código | Quando |
+|---|---|
+| `200` | `GET` ou `PUT` bem-sucedido |
+| `201` | `POST` criou o livro; traz `Location: /livros/{id}` |
+| `204` | `DELETE` ou `OPTIONS`; sem corpo |
+| `400` | erro sintático: JSON malformado, corpo vazio, corpo que não é objeto, `Content-Length` inválido |
+| `404` | rota inexistente ou id não encontrado |
+| `405` | método não aceito na rota; sempre com header `Allow` |
+| `415` | `Content-Type` não é `application/json` |
+| `422` | erro semântico: JSON válido, mas os dados reprovam em `validar_livro()` |
+| `500` | exceção inesperada; traceback fica só no console |
+| `501` | verbo HTTP desconhecido (`TRACE`, `CONNECT`) |
 
-## Formato do JSON de erro
-
-Toda resposta de erro usa o mesmo envelope, com `detalhes` vazio quando não há
-nada a detalhar:
+## Formato de erro
 
 ```json
 {
   "erro": {
     "status": 422,
     "mensagem": "Dados do livro inválidos.",
-    "detalhes": [
-      "O campo 'titulo' é obrigatório e deve ser um texto não vazio.",
-      "Campos não reconhecidos: editora."
-    ]
+    "detalhes": ["Campos não reconhecidos: editora."]
   }
 }
 ```
 
-As respostas de sucesso **não** usam envelope: `GET /livros` devolve a lista
-pura e `GET /livros/{id}` devolve o objeto puro.
+`detalhes` vem vazio quando não há o que detalhar. Respostas de sucesso não usam envelope: devolvem a lista ou o objeto puro. Tudo sai como `application/json; charset=utf-8`, exceto o `204`. Nenhuma resposta sai em HTML.
 
-Toda resposta sai como `Content-Type: application/json; charset=utf-8`, exceto
-o `204`, que por definição não tem corpo nem `Content-Type`. Nenhuma resposta
-sai em HTML.
+## Decisões
 
-## Como rodar os testes
+**400 vs. 422.** `400` é o corpo que o servidor não consegue interpretar; `422` é o corpo interpretado que descreve um livro impossível (título vazio, ano como texto, campo desconhecido). O cliente descobre se o problema é como ele serializou ou o que ele pediu.
 
-Com o servidor rodando em outro terminal:
+**`/livros/abc` devolve 404.** O segmento depois de `/livros/` só vira recurso se for inteiro. `abc` não é um id errado, é um endereço que não existe.
 
-```
-bash testes.sh
-```
+**`PATCH` devolve 405.** Atualização parcial exigiria uma validação diferente de `validar_livro()`, que sempre cobra os campos obrigatórios. Um PATCH pela metade seria pior que nenhum.
 
-São 26 casos cobrindo os caminhos felizes e todos os erros acima. O script
-imprime status esperado versus obtido, confere os headers `Location` e `Allow`,
-verifica que o `HEAD` não traz corpo e termina com `X/26 passaram`. Ele depende
-do servidor ter acabado de subir, porque conta com os ids 1, 2 e 3 de exemplo e
-com a ordem dos casos.
+**`Content-Length` negativo é recusado.** `rfile.read(-1)` leria até o fim do socket e travaria o servidor, que é single-thread.
 
-## Decisões de projeto
-
-**400 versus 422.** Os dois significam coisas diferentes. `400` é o corpo que o
-servidor não consegue nem interpretar: JSON quebrado, corpo vazio, um array no
-lugar de um objeto, `Content-Length` inválido. `422` é o corpo que foi
-interpretado sem problemas mas descreve um livro impossível: título vazio, ano
-como texto, campo obrigatório faltando, campo desconhecido. Separar os dois deixa
-o cliente saber se o problema é como ele serializou o pedido ou o que ele pediu.
-
-**`/livros/abc` devolve 404, não 400.** O path só vira recurso quando o segmento
-depois de `/livros/` é um inteiro. `abc` não corresponde a recurso nenhum nesta
-API, então é o mesmo caso de `/rota-inexistente`. Não é um id errado, é um
-endereço que não existe.
-
-**`PATCH` devolve 405.** Atualização parcial exigiria uma validação diferente da
-de `validar_livro()`, que cobra os campos obrigatórios sempre. Entregar um PATCH
-pela metade seria pior que não ter PATCH, então a rota responde `405` com o
-header `Allow` dizendo o que ela realmente aceita.
-
-**`Content-Length` negativo é recusado.** `rfile.read(-1)` leria até o fim do
-socket e travaria o servidor, que é single-thread — uma requisição só derrubaria
-a API para todo mundo.
-
-**`send_error` foi sobrescrito.** A stdlib responde HTML nos erros que ela mesma
-levanta antes de chegar num `do_*` (verbo desconhecido, linha de pedido
-inválida). Sem sobrescrever, a API quebraria o próprio contrato JSON justamente
-no caminho de erro.
+**`send_error` foi sobrescrito.** A stdlib responde HTML nos erros que ela levanta antes de chegar num `do_*`, o que quebraria o contrato JSON justamente no caminho de erro.
