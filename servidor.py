@@ -24,9 +24,22 @@ TAMANHO_MAXIMO_CORPO = 1048576
 
 class LivroHandler(BaseHTTPRequestHandler):
 
+    server_version = "CatalogoLivros/1.0"
+    sys_version = ""
+    protocol_version = "HTTP/1.1"
+
     METODOS_POR_ROTA = {
         "colecao": ("GET", "HEAD", "POST", "OPTIONS"),
         "item": ("GET", "HEAD", "PUT", "DELETE", "OPTIONS"),
+    }
+
+    # usadas quando quem dispara o erro e a stdlib, antes de chegar num do_*
+    MENSAGENS_PADRAO = {
+        400: "Requisição malformada.",
+        414: "URI da requisição longa demais.",
+        431: "Cabeçalhos da requisição grandes demais.",
+        501: "Método não implementado por este servidor.",
+        505: "Versão do HTTP não suportada.",
     }
 
     def identificar_rota(self):
@@ -64,7 +77,44 @@ class LivroHandler(BaseHTTPRequestHandler):
 
         self.end_headers()
 
-        self.wfile.write(corpo)
+        # o HEAD reaproveita o do_GET e precisa dos mesmos headers, mas sem corpo
+        if self.command != "HEAD":
+            self.wfile.write(corpo)
+
+    def enviar_sem_corpo(self, status, extras=None):
+        self.send_response(status)
+
+        if extras:
+            for nome, valor in extras.items():
+                self.send_header(nome, valor)
+
+        self.end_headers()
+
+    def version_string(self):
+        # sem isso o header Server sairia com um espaco sobrando no fim
+        return self.server_version
+
+    def send_error(self, code, message=None, explain=None):
+        # erros levantados pela propria stdlib (verbo desconhecido, linha de pedido
+        # invalida, header grande demais) sairiam em HTML e quebrariam o contrato JSON
+        try:
+            codigo = int(code)
+        except (TypeError, ValueError):
+            codigo = 500
+
+        mensagem = self.MENSAGENS_PADRAO.get(codigo, "Não foi possível processar a requisição.")
+
+        # o texto da stdlib vem em ingles, entao vira detalhe e nao mensagem principal
+        detalhes = [str(message)] if message else []
+
+        # sao erros de protocolo, e o corpo pendente da requisicao nunca foi lido
+        self.close_connection = True
+
+        if codigo < 200 or codigo in (204, 205, 304):
+            self.enviar_sem_corpo(codigo)
+            return
+
+        self.enviar_erro(codigo, mensagem, detalhes)
 
     def enviar_erro(self, status, mensagem, detalhes=None, extras=None):
         envelope = {
@@ -109,7 +159,7 @@ class LivroHandler(BaseHTTPRequestHandler):
         return self.rfile.read(tamanho), None
 
     def descartar_corpo(self):
-        # o corpo precisa sair do socket mesmo quando a requisicao vai ser recusada
+        # sem consumir o corpo, o proximo pedido da mesma conexao HTTP/1.1 sairia desalinhado
         bruto = self.headers.get("Content-Length")
 
         if bruto is None:
@@ -158,7 +208,6 @@ class LivroHandler(BaseHTTPRequestHandler):
         if erro:
             return None, 400, erro, []
 
-        # array ou numero solto e erro de forma, nao de conteudo
         if not isinstance(dados, dict):
             return None, 400, "O corpo da requisição deve ser um objeto JSON.", []
 
@@ -190,6 +239,10 @@ class LivroHandler(BaseHTTPRequestHandler):
 
         except Exception:
             self.erro_interno()
+
+    def do_HEAD(self):
+        # mesmos status e headers do GET, que ja carrega a propria rede de seguranca de 500
+        self.do_GET()
 
     def do_POST(self):
         try:
@@ -264,8 +317,37 @@ class LivroHandler(BaseHTTPRequestHandler):
                 self.enviar_erro(404, "Livro não encontrado.")
                 return
 
-            self.send_response(204)
-            self.end_headers()
+            self.enviar_sem_corpo(204)
+
+        except Exception:
+            self.erro_interno()
+
+    def do_PATCH(self):
+        try:
+            rota, livro_id = self.identificar_rota()
+
+            if rota is None:
+                self.rota_nao_encontrada()
+                return
+
+            # atualizacao parcial esta fora do escopo, entao a rota so anuncia o que aceita
+            self.metodo_nao_permitido(rota)
+
+        except Exception:
+            self.erro_interno()
+
+    def do_OPTIONS(self):
+        try:
+            rota, livro_id = self.identificar_rota()
+
+            if rota is None:
+                self.rota_nao_encontrada()
+                return
+
+            self.enviar_sem_corpo(
+                204,
+                extras={"Allow": ", ".join(self.METODOS_POR_ROTA[rota])}
+            )
 
         except Exception:
             self.erro_interno()
@@ -283,11 +365,13 @@ def iniciar_servidor():
     print("=" * 50)
     print("API de Livros iniciada")
     print(f"Servidor: http://{HOST}:{PORT}")
-    print("GET    /livros")
-    print("GET    /livros/{id}")
-    print("POST   /livros")
-    print("PUT    /livros/{id}")
-    print("DELETE /livros/{id}")
+    print("GET     /livros")
+    print("GET     /livros/{id}")
+    print("POST    /livros")
+    print("PUT     /livros/{id}")
+    print("DELETE  /livros/{id}")
+    print("HEAD    /livros e /livros/{id}")
+    print("OPTIONS /livros e /livros/{id}")
     print("=" * 50)
     print("Pressione CTRL+C para encerrar.")
 
