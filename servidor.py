@@ -56,11 +56,21 @@ class LivroHandler(BaseHTTPRequestHandler):
 
         self.wfile.write(corpo)
 
+    def enviar_erro(self, status, mensagem, detalhes=None):
+        envelope = {
+            "erro": {
+                "status": status,
+                "mensagem": mensagem,
+                "detalhes": detalhes if detalhes else [],
+            }
+        }
+        self.enviar_json(status, envelope)
+
     def erro_interno(self):
         # o traceback fica so no console, o cliente recebe mensagem generica
         traceback.print_exc()
         try:
-            self.enviar_json(500, {"erro": "Erro interno do servidor."})
+            self.enviar_erro(500, "Erro interno do servidor.")
         except Exception:
             self.close_connection = True
 
@@ -88,6 +98,26 @@ class LivroHandler(BaseHTTPRequestHandler):
 
         return self.rfile.read(tamanho), None
 
+    def obter_payload(self):
+        # devolve (dados, status_do_erro, mensagem, detalhes)
+        corpo, erro = self.ler_corpo()
+        if erro:
+            return None, 400, erro, []
+
+        dados, erro = json_para_dict(corpo)
+        if erro:
+            return None, 400, erro, []
+
+        # array ou numero solto e erro de forma, nao de conteudo
+        if not isinstance(dados, dict):
+            return None, 400, "O corpo da requisição deve ser um objeto JSON.", []
+
+        erros = validar_livro(dados)
+        if erros:
+            return None, 422, "Dados do livro inválidos.", erros
+
+        return dados, None, None, None
+
     def do_GET(self):
         try:
             rota, livro_id = self.identificar_rota()
@@ -100,13 +130,13 @@ class LivroHandler(BaseHTTPRequestHandler):
                 livro = buscar_livro(livro_id)
 
                 if livro is None:
-                    self.enviar_json(404, {"erro": "Livro não encontrado."})
+                    self.enviar_erro(404, "Livro não encontrado.")
                     return
 
                 self.enviar_json(200, livro)
                 return
 
-            self.enviar_json(404, {"erro": "Rota não encontrada."})
+            self.enviar_erro(404, "Rota não encontrada.")
 
         except Exception:
             self.erro_interno()
@@ -116,25 +146,13 @@ class LivroHandler(BaseHTTPRequestHandler):
             rota, livro_id = self.identificar_rota()
 
             if rota != "colecao":
-                self.enviar_json(404, {"erro": "Rota não encontrada."})
+                self.enviar_erro(404, "Rota não encontrada.")
                 return
 
-            corpo, erro = self.ler_corpo()
+            dados, status, mensagem, detalhes = self.obter_payload()
 
-            if erro:
-                self.enviar_json(400, {"erro": erro})
-                return
-
-            dados, erro = json_para_dict(corpo)
-
-            if erro:
-                self.enviar_json(400, {"erro": erro})
-                return
-
-            erros = validar_livro(dados)
-
-            if erros:
-                self.enviar_json(400, {"erros": erros})
+            if status:
+                self.enviar_erro(status, mensagem, detalhes)
                 return
 
             livro = criar_livro(dados)
@@ -149,29 +167,17 @@ class LivroHandler(BaseHTTPRequestHandler):
             rota, livro_id = self.identificar_rota()
 
             if rota != "item":
-                self.enviar_json(404, {"erro": "Rota não encontrada."})
+                self.enviar_erro(404, "Rota não encontrada.")
                 return
 
-            corpo, erro = self.ler_corpo()
+            dados, status, mensagem, detalhes = self.obter_payload()
 
-            if erro:
-                self.enviar_json(400, {"erro": erro})
-                return
-
-            dados, erro = json_para_dict(corpo)
-
-            if erro:
-                self.enviar_json(400, {"erro": erro})
-                return
-
-            erros = validar_livro(dados)
-
-            if erros:
-                self.enviar_json(400, {"erros": erros})
+            if status:
+                self.enviar_erro(status, mensagem, detalhes)
                 return
 
             if buscar_livro(livro_id) is None:
-                self.enviar_json(404, {"erro": "Livro não encontrado."})
+                self.enviar_erro(404, "Livro não encontrado.")
                 return
 
             self.enviar_json(200, atualizar_livro(livro_id, dados))
@@ -184,11 +190,11 @@ class LivroHandler(BaseHTTPRequestHandler):
             rota, livro_id = self.identificar_rota()
 
             if rota != "item":
-                self.enviar_json(404, {"erro": "Rota não encontrada."})
+                self.enviar_erro(404, "Rota não encontrada.")
                 return
 
             if not remover_livro(livro_id):
-                self.enviar_json(404, {"erro": "Livro não encontrado."})
+                self.enviar_erro(404, "Livro não encontrado.")
                 return
 
             self.send_response(204)
