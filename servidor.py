@@ -24,6 +24,11 @@ TAMANHO_MAXIMO_CORPO = 1048576
 
 class LivroHandler(BaseHTTPRequestHandler):
 
+    METODOS_POR_ROTA = {
+        "colecao": ("GET", "HEAD", "POST", "OPTIONS"),
+        "item": ("GET", "HEAD", "PUT", "DELETE", "OPTIONS"),
+    }
+
     def identificar_rota(self):
         caminho = urlparse(self.path).path
 
@@ -46,17 +51,22 @@ class LivroHandler(BaseHTTPRequestHandler):
 
         return None, None
 
-    def enviar_json(self, status, dados):
+    def enviar_json(self, status, dados, extras=None):
         corpo = dict_para_json(dados)
 
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(corpo)))
+
+        if extras:
+            for nome, valor in extras.items():
+                self.send_header(nome, valor)
+
         self.end_headers()
 
         self.wfile.write(corpo)
 
-    def enviar_erro(self, status, mensagem, detalhes=None):
+    def enviar_erro(self, status, mensagem, detalhes=None, extras=None):
         envelope = {
             "erro": {
                 "status": status,
@@ -64,7 +74,7 @@ class LivroHandler(BaseHTTPRequestHandler):
                 "detalhes": detalhes if detalhes else [],
             }
         }
-        self.enviar_json(status, envelope)
+        self.enviar_json(status, envelope, extras)
 
     def erro_interno(self):
         # o traceback fica so no console, o cliente recebe mensagem generica
@@ -98,8 +108,48 @@ class LivroHandler(BaseHTTPRequestHandler):
 
         return self.rfile.read(tamanho), None
 
+    def descartar_corpo(self):
+        # o corpo precisa sair do socket mesmo quando a requisicao vai ser recusada
+        bruto = self.headers.get("Content-Length")
+
+        if bruto is None:
+            return
+
+        try:
+            tamanho = int(bruto)
+        except ValueError:
+            self.close_connection = True
+            return
+
+        if tamanho < 0 or tamanho > TAMANHO_MAXIMO_CORPO:
+            self.close_connection = True
+            return
+
+        self.rfile.read(tamanho)
+
+    def content_type_valido(self):
+        cabecalho = self.headers.get("Content-Type", "")
+        return cabecalho.split(";")[0].strip().lower() == "application/json"
+
+    def metodo_nao_permitido(self, rota):
+        self.descartar_corpo()
+        permitidos = ", ".join(self.METODOS_POR_ROTA[rota])
+        self.enviar_erro(
+            405,
+            "Método %s não permitido nesta rota." % self.command,
+            extras={"Allow": permitidos}
+        )
+
+    def rota_nao_encontrada(self):
+        self.descartar_corpo()
+        self.enviar_erro(404, "Rota não encontrada.")
+
     def obter_payload(self):
         # devolve (dados, status_do_erro, mensagem, detalhes)
+        if not self.content_type_valido():
+            self.descartar_corpo()
+            return None, 415, "Content-Type deve ser application/json.", []
+
         corpo, erro = self.ler_corpo()
         if erro:
             return None, 400, erro, []
@@ -145,8 +195,12 @@ class LivroHandler(BaseHTTPRequestHandler):
         try:
             rota, livro_id = self.identificar_rota()
 
+            if rota == "item":
+                self.metodo_nao_permitido("item")
+                return
+
             if rota != "colecao":
-                self.enviar_erro(404, "Rota não encontrada.")
+                self.rota_nao_encontrada()
                 return
 
             dados, status, mensagem, detalhes = self.obter_payload()
@@ -157,7 +211,11 @@ class LivroHandler(BaseHTTPRequestHandler):
 
             livro = criar_livro(dados)
 
-            self.enviar_json(201, livro)
+            self.enviar_json(
+                201,
+                livro,
+                extras={"Location": "/livros/%d" % livro["id"]}
+            )
 
         except Exception:
             self.erro_interno()
@@ -166,10 +224,15 @@ class LivroHandler(BaseHTTPRequestHandler):
         try:
             rota, livro_id = self.identificar_rota()
 
-            if rota != "item":
-                self.enviar_erro(404, "Rota não encontrada.")
+            if rota == "colecao":
+                self.metodo_nao_permitido("colecao")
                 return
 
+            if rota != "item":
+                self.rota_nao_encontrada()
+                return
+
+            # o corpo e lido antes de checar a existencia para nao deixar bytes na conexao
             dados, status, mensagem, detalhes = self.obter_payload()
 
             if status:
@@ -189,8 +252,12 @@ class LivroHandler(BaseHTTPRequestHandler):
         try:
             rota, livro_id = self.identificar_rota()
 
+            if rota == "colecao":
+                self.metodo_nao_permitido("colecao")
+                return
+
             if rota != "item":
-                self.enviar_erro(404, "Rota não encontrada.")
+                self.rota_nao_encontrada()
                 return
 
             if not remover_livro(livro_id):
