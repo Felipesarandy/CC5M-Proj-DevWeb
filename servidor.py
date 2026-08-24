@@ -1,6 +1,6 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse
-# mostrar erros detalhados no terminal
+# mostrar erros no terminal
 import traceback
 
 from livros_dados import (
@@ -32,34 +32,11 @@ class LivroHandler(BaseHTTPRequestHandler):
         "item": ("GET", "PUT", "DELETE"),
     }
 
-    # usadas quando quem dispara o erro e a stdlib, antes de chegar num do_*
     MENSAGENS_PADRAO = {
         400: "Requisição malformada.",
         501: "Método não implementado por este servidor.",
         505: "Versão do HTTP não suportada.",
     }
-
-    def identificar_rota(self):
-        caminho = urlparse(self.path).path
-
-        if caminho != "/":
-            caminho = caminho.rstrip("/")
-
-        # /livros
-        if caminho == "/livros":
-            return "colecao", None
-
-        # /livros/3
-        partes = caminho.strip("/").split("/")
-
-        if len(partes) == 2 and partes[0] == "livros":
-            try:
-                livro_id = int(partes[1])
-                return "item", livro_id
-            except ValueError:
-                return None, None
-
-        return None, None
 
     def enviar_json(self, status, dados, extras=None):
         """Responde com corpo JSON, o status e os headers extras informados."""
@@ -110,7 +87,6 @@ class LivroHandler(BaseHTTPRequestHandler):
 
         mensagem = self.MENSAGENS_PADRAO.get(codigo, "Não foi possível processar a requisição.")
 
-        # o texto da stdlib vem em ingles, entao vira detalhe e nao mensagem principal
         detalhes = [str(message)] if message else []
 
         self.enviar_erro(codigo, mensagem, detalhes)
@@ -131,36 +107,34 @@ class LivroHandler(BaseHTTPRequestHandler):
             try:
                 return "item", int(partes[2])
             except ValueError:
-                # o recurso existe na API, o id e que veio errado
                 return "invalida", None
 
         return None, None
 
     def ler_corpo(self):
-        """Lê o corpo JSON da requisição e devolve (dados, erro)."""
+        """Lê o corpo JSON da requisição e devolve (dados, status_do_erro, mensagem)."""
         bruto = self.headers.get("Content-Length")
 
         if bruto is None:
-            return None, "Header Content-Length ausente."
+            return None, 411, "Header Content-Length é obrigatório para esta requisição."
 
         try:
             tamanho = int(bruto)
         except ValueError:
-            return None, "Header Content-Length inválido: era esperado um número inteiro."
+            return None, 400, "Header Content-Length inválido: era esperado um número inteiro."
 
         if tamanho < 0:
-            # rfile.read(-1) leria ate o fim do socket e travaria o servidor, que e single-thread
-            return None, "Header Content-Length não pode ser negativo."
+            return None, 400, "Header Content-Length não pode ser negativo."
 
         dados, erro = json_para_dict(self.rfile.read(tamanho))
 
         if erro:
-            return None, erro
+            return None, 400, erro
 
         if not isinstance(dados, dict):
-            return None, "O corpo da requisição deve ser um objeto JSON."
+            return None, 400, "O corpo da requisição deve ser um objeto JSON."
 
-        return dados, None
+        return dados, None, None
 
     def do_GET(self):
         """Lista a coleção de livros ou devolve um livro pelo id."""
@@ -207,10 +181,10 @@ class LivroHandler(BaseHTTPRequestHandler):
                 self.enviar_erro(404, "Rota não encontrada.")
                 return
 
-            dados, erro = self.ler_corpo()
+            dados, status, mensagem = self.ler_corpo()
 
-            if erro:
-                self.enviar_erro(400, erro)
+            if status:
+                self.enviar_erro(status, mensagem)
                 return
 
             erros = validar_livro(dados)
@@ -246,21 +220,21 @@ class LivroHandler(BaseHTTPRequestHandler):
             if rota != "item":
                 self.enviar_erro(404, "Rota não encontrada.")
                 return
+            
+            if buscar_livro(livro_id) is None:
+                self.enviar_erro(404, "Livro não encontrado.")
+                return
 
-            dados, erro = self.ler_corpo()
+            dados, status, mensagem = self.ler_corpo()
 
-            if erro:
-                self.enviar_erro(400, erro)
+            if status:
+                self.enviar_erro(status, mensagem)
                 return
 
             erros = validar_livro(dados)
 
             if erros:
                 self.enviar_erro(400, "Dados do livro inválidos.", erros)
-                return
-
-            if buscar_livro(livro_id) is None:
-                self.enviar_erro(404, "Livro não encontrado.")
                 return
 
             self.enviar_json(200, atualizar_livro(livro_id, dados))
@@ -289,6 +263,7 @@ class LivroHandler(BaseHTTPRequestHandler):
                 self.enviar_erro(404, "Livro não encontrado.")
                 return
 
+            # 204 nao tem corpo por definicao, entao nao passa por enviar_json
             self.send_response(204)
             self.end_headers()
 
