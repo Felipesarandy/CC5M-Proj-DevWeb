@@ -1,0 +1,168 @@
+Suite de testes - API de catalogo de livros
+Base: http://localhost:8000
+
+--- LEITURA ---
+[1] Lista a colecao
+     Metodo:   GET
+     URI:      /api/books
+     Enviado:  (sem corpo)
+     Status:   200 (esperado 200) -> OK
+     Resposta: [ { "id": 1, "title": "Dom Casmurro", "author": "Machado de Assis", "year": 1899, "available": true }, { "id": 2, "title": "Grande Sertão: Veredas", "author": "João Guimarães Rosa", "year": 1956, "available": true }, { "id": 3, "title": "Capitães da Areia", "author": "Jorge Amado", "year": 1937, "available": false }]
+
+[2] Consulta um livro
+     Metodo:   GET
+     URI:      /api/books/1
+     Enviado:  (sem corpo)
+     Status:   200 (esperado 200) -> OK
+     Resposta: { "id": 1, "title": "Dom Casmurro", "author": "Machado de Assis", "year": 1899, "available": true}
+
+[3] Livro inexistente
+     Metodo:   GET
+     URI:      /api/books/999
+     Enviado:  (sem corpo)
+     Status:   404 (esperado 404) -> OK
+     Resposta: { "erro": "Livro não encontrado."}
+
+[4] Id que nao e inteiro
+     Metodo:   GET
+     URI:      /api/books/abc
+     Enviado:  (sem corpo)
+     Status:   400 (esperado 400) -> OK
+     Resposta: { "erro": "Identificador de livro inválido: deve ser um número inteiro."}
+
+[5] Rota inexistente
+     Metodo:   GET
+     URI:      /rota-inexistente
+     Enviado:  (sem corpo)
+     Status:   404 (esperado 404) -> OK
+     Resposta: { "erro": "Rota não encontrada."}
+
+--- CRIACAO ---
+[6] Cria um livro
+     Metodo:   POST
+     URI:      /api/books
+     Enviado:  {"title":"Vidas Secas","author":"Graciliano Ramos","year":1938,"available":true}
+     Status:   201 (esperado 201) -> OK
+     Header:   Location: /api/books/4
+     Resposta: { "id": 4, "title": "Vidas Secas", "author": "Graciliano Ramos", "year": 1938, "available": true}
+
+[7] JSON malformado
+     Metodo:   POST
+     URI:      /api/books
+     Enviado:  {"title":
+     Status:   400 (esperado 400) -> OK
+     Resposta: { "erro": "JSON malformado no corpo da requisição."}
+
+[8] Corpo vazio
+     Metodo:   POST
+     URI:      /api/books
+     Enviado:  
+     Status:   400 (esperado 400) -> OK
+     Resposta: { "erro": "Corpo da requisição vazio: era esperado um JSON."}
+
+[9] Corpo que nao e objeto
+     Metodo:   POST
+     URI:      /api/books
+     Enviado:  [1,2]
+     Status:   400 (esperado 400) -> OK
+     Resposta: { "erro": "O corpo da requisição deve ser um objeto JSON."}
+
+[10] Sem o campo title
+     Metodo:   POST
+     URI:      /api/books
+     Enviado:  {"author":"Alguem"}
+     Status:   400 (esperado 400) -> OK
+     Resposta: { "erro": "Dados do livro inválidos.", "detalhes": [ "O campo 'title' é obrigatório e deve ser um texto não vazio." ]}
+
+[11] Title vazio
+     Metodo:   POST
+     URI:      /api/books
+     Enviado:  {"title":"","author":"Alguem"}
+     Status:   400 (esperado 400) -> OK
+     Resposta: { "erro": "Dados do livro inválidos.", "detalhes": [ "O campo 'title' é obrigatório e deve ser um texto não vazio." ]}
+
+[12] Year como texto
+     Metodo:   POST
+     URI:      /api/books
+     Enviado:  {"title":"T","author":"A","year":"1938"}
+     Status:   400 (esperado 400) -> OK
+     Resposta: { "erro": "Dados do livro inválidos.", "detalhes": [ "O campo 'year' deve ser um número inteiro." ]}
+
+[13] Campo desconhecido
+     Metodo:   POST
+     URI:      /api/books
+     Enviado:  {"title":"T","author":"A","editora":"Record"}
+     Status:   400 (esperado 400) -> OK
+     Resposta: { "erro": "Dados do livro inválidos.", "detalhes": [ "Campos não reconhecidos: editora." ]}
+
+[14] Content-Length invalido
+     Metodo:   POST
+     URI:      /api/books
+     Enviado:  {"title":"T","author":"A"}
+     Status:   400 (esperado 400) -> OK
+     Resposta: { "erro": "Header Content-Length inválido: era esperado um número inteiro."}
+
+--- ATUALIZACAO ---
+[15] Substitui um livro
+     Metodo:   PUT
+     URI:      /api/books/1
+     Enviado:  {"title":"Dom Casmurro","author":"Machado de Assis","year":1899,"available":false}
+     Status:   200 (esperado 200) -> OK
+     Resposta: { "id": 1, "title": "Dom Casmurro", "author": "Machado de Assis", "year": 1899, "available": false}
+
+[16] Substitui livro inexistente
+     Metodo:   PUT
+     URI:      /api/books/999
+     Enviado:  {"title":"T","author":"A"}
+     Status:   404 (esperado 404) -> OK
+     Resposta: { "erro": "Livro não encontrado."}
+
+[17] Substitui sem os campos
+     Metodo:   PUT
+     URI:      /api/books/1
+     Enviado:  {}
+     Status:   400 (esperado 400) -> OK
+     Resposta: { "erro": "Dados do livro inválidos.", "detalhes": [ "O campo 'title' é obrigatório e deve ser um texto não vazio.", "O campo 'author' é obrigatório e deve ser um texto não vazio." ]}
+
+[18] PUT na colecao
+     Metodo:   PUT
+     URI:      /api/books
+     Enviado:  {"title":"T","author":"A"}
+     Status:   405 (esperado 405) -> OK
+     Header:   Allow: GET, POST
+     Resposta: { "erro": "Método PUT não permitido nesta rota."}
+
+--- REMOCAO ---
+[19] Remove um livro
+     Metodo:   DELETE
+     URI:      /api/books/3
+     Enviado:  (sem corpo)
+     Status:   204 (esperado 204) -> OK
+     Header:   corpo vazio, como esperado
+     Resposta: 
+
+[20] Remove o mesmo livro de novo
+     Metodo:   DELETE
+     URI:      /api/books/3
+     Enviado:  (sem corpo)
+     Status:   404 (esperado 404) -> OK
+     Resposta: { "erro": "Livro não encontrado."}
+
+[21] DELETE na colecao
+     Metodo:   DELETE
+     URI:      /api/books
+     Enviado:  (sem corpo)
+     Status:   405 (esperado 405) -> OK
+     Header:   Allow: GET, POST
+     Resposta: { "erro": "Método DELETE não permitido nesta rota."}
+
+--- METODO NAO PERMITIDO ---
+[22] POST no item
+     Metodo:   POST
+     URI:      /api/books/1
+     Enviado:  {"title":"T","author":"A"}
+     Status:   405 (esperado 405) -> OK
+     Header:   Allow: GET, PUT, DELETE
+     Resposta: { "erro": "Método POST não permitido nesta rota."}
+
+22/22 passaram
