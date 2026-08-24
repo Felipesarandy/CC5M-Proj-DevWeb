@@ -8,20 +8,19 @@ CAMPOS_OBRIGATORIOS = ("title", "author")
 # Campos aceitos (qualquer coisa fora disso é recusada).
 CAMPOS_PERMITIDOS = ("title", "author", "year", "available")
 
-# CRUD
 
 def listar_livros():
-    
+    """Devolve todos os livros do catálogo em uma lista."""
     return list(_livros.values())
 
 
 def buscar_livro(livro_id):
-    
+    """Devolve o livro do id informado, ou None se ele não existir."""
     return _livros.get(livro_id)
 
 
 def criar_livro(dados):
-    
+    """Cria um livro com um id novo e devolve o registro criado."""
     global _proximo_id
     livro = {
         "id": _proximo_id,
@@ -36,9 +35,7 @@ def criar_livro(dados):
 
 
 def atualizar_livro(livro_id, dados):
-    
-    if livro_id not in _livros:
-        return None
+    """Substitui por inteiro o livro do id informado e devolve o resultado."""
     livro = {
         "id": livro_id,  # id fixo
         "title": dados["title"],
@@ -51,20 +48,16 @@ def atualizar_livro(livro_id, dados):
 
 
 def remover_livro(livro_id):
-    
+    """Remove o livro do id informado e diz se ele existia."""
     if livro_id in _livros:
         del _livros[livro_id]
         return True
     return False
 
-# Validação
 
 def validar_livro(dados):
-    
+    """Devolve a lista de erros dos dados de um livro, vazia se estiverem ok."""
     erros = []
-
-    if not isinstance(dados, dict):
-        return ["O corpo da requisição deve ser um objeto JSON."]
 
     for campo in CAMPOS_OBRIGATORIOS:
         valor = dados.get(campo)
@@ -85,10 +78,9 @@ def validar_livro(dados):
 
     return erros
 
-# Conversão JSON <-> Python
 
 def json_para_dict(corpo_bytes):
-    
+    """Converte os bytes do corpo em objeto Python e devolve (dados, erro)."""
     if not corpo_bytes:
         return None, "Corpo da requisição vazio: era esperado um JSON."
     try:
@@ -98,13 +90,12 @@ def json_para_dict(corpo_bytes):
 
 
 def dict_para_json(dados):
-    
+    """Converte um objeto Python em bytes JSON em UTF-8, com acento de verdade."""
     return json.dumps(dados, ensure_ascii=False, indent=2).encode("utf-8")
 
-# Dados pre setados para teste rápido do módulo
 
 def carregar_dados_exemplo():
-    
+    """Popula o catálogo com três livros para a API não subir vazia."""
     exemplos = [
         {"title": "Dom Casmurro", "author": "Machado de Assis", "year": 1899, "available": True},
         {"title": "Grande Sertão: Veredas", "author": "João Guimarães Rosa", "year": 1956, "available": True},

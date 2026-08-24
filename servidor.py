@@ -38,29 +38,8 @@ class LivroHandler(BaseHTTPRequestHandler):
         505: "Versão do HTTP não suportada.",
     }
 
-    def identificar_rota(self):
-        caminho = urlparse(self.path).path
-
-        if caminho != "/":
-            caminho = caminho.rstrip("/")
-
-        # /api/books
-        if caminho == "/api/books":
-            return "colecao", None
-
-        # /api/books/3
-        partes = caminho.strip("/").split("/")
-
-        if len(partes) == 3 and partes[0] == "api" and partes[1] == "books":
-            try:
-                return "item", int(partes[2])
-            except ValueError:
-                # o recurso existe na API, o id e que veio errado
-                return "invalida", None
-
-        return None, None
-
     def enviar_json(self, status, dados, extras=None):
+        """Responde com corpo JSON, o status e os headers extras informados."""
         corpo = dict_para_json(dados)
 
         self.send_response(status)
@@ -74,18 +53,33 @@ class LivroHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(corpo)
 
-    def enviar_sem_corpo(self, status, extras=None):
-        self.send_response(status)
+    def enviar_erro(self, status, mensagem, detalhes=None, extras=None):
+        """Responde um erro no formato único da API."""
+        corpo = {"erro": mensagem}
 
-        if extras:
-            for nome, valor in extras.items():
-                self.send_header(nome, valor)
+        if detalhes:
+            corpo["detalhes"] = detalhes
 
-        self.end_headers()
+        self.enviar_json(status, corpo, extras)
+
+    def metodo_nao_permitido(self, rota):
+        """Responde 405 anunciando no header Allow os métodos aceitos na rota."""
+        self.enviar_erro(
+            405,
+            "Método %s não permitido nesta rota." % self.command,
+            extras={"Allow": ", ".join(self.METODOS_POR_ROTA[rota])}
+        )
+
+    def erro_interno(self):
+        """Responde 500 e deixa o traceback apenas no console."""
+        traceback.print_exc()
+        try:
+            self.enviar_erro(500, "Erro interno do servidor.")
+        except Exception:
+            pass
 
     def send_error(self, code, message=None, explain=None):
-        # erros levantados pela propria stdlib (verbo desconhecido, linha de pedido
-        # invalida, header grande demais) sairiam em HTML e quebrariam o contrato JSON
+        """Faz os erros levantados pela stdlib saírem em JSON, não em HTML."""
         try:
             codigo = int(code)
         except (TypeError, ValueError):
@@ -96,31 +90,31 @@ class LivroHandler(BaseHTTPRequestHandler):
         # o texto da stdlib vem em ingles, entao vira detalhe e nao mensagem principal
         detalhes = [str(message)] if message else []
 
-        if codigo < 200 or codigo in (204, 205, 304):
-            self.enviar_sem_corpo(codigo)
-            return
-
         self.enviar_erro(codigo, mensagem, detalhes)
 
-    def enviar_erro(self, status, mensagem, detalhes=None, extras=None):
-        envelope = {
-            "erro": {
-                "status": status,
-                "mensagem": mensagem,
-                "detalhes": detalhes if detalhes else [],
-            }
-        }
-        self.enviar_json(status, envelope, extras)
+    def identificar_rota(self):
+        """Classifica o caminho pedido em colecao, item, invalida ou desconhecida."""
+        caminho = urlparse(self.path).path
 
-    def erro_interno(self):
-        # o traceback fica so no console, o cliente recebe mensagem generica
-        traceback.print_exc()
-        try:
-            self.enviar_erro(500, "Erro interno do servidor.")
-        except Exception:
-            pass
+        if caminho != "/":
+            caminho = caminho.rstrip("/")
+
+        if caminho == "/api/books":
+            return "colecao", None
+
+        partes = caminho.strip("/").split("/")
+
+        if len(partes) == 3 and partes[0] == "api" and partes[1] == "books":
+            try:
+                return "item", int(partes[2])
+            except ValueError:
+                # o recurso existe na API, o id e que veio errado
+                return "invalida", None
+
+        return None, None
 
     def ler_corpo(self):
+        """Lê o corpo JSON da requisição e devolve (dados, erro)."""
         bruto = self.headers.get("Content-Length")
 
         if bruto is None:
@@ -135,39 +129,18 @@ class LivroHandler(BaseHTTPRequestHandler):
             # rfile.read(-1) leria ate o fim do socket e travaria o servidor, que e single-thread
             return None, "Header Content-Length não pode ser negativo."
 
-        return self.rfile.read(tamanho), None
+        dados, erro = json_para_dict(self.rfile.read(tamanho))
 
-    def metodo_nao_permitido(self, rota):
-        permitidos = ", ".join(self.METODOS_POR_ROTA[rota])
-        self.enviar_erro(
-            405,
-            "Método %s não permitido nesta rota." % self.command,
-            extras={"Allow": permitidos}
-        )
-
-    def rota_nao_encontrada(self):
-        self.enviar_erro(404, "Rota não encontrada.")
-
-    def obter_payload(self):
-        # devolve (dados, mensagem_do_erro, detalhes)
-        corpo, erro = self.ler_corpo()
         if erro:
-            return None, erro, []
-
-        dados, erro = json_para_dict(corpo)
-        if erro:
-            return None, erro, []
+            return None, erro
 
         if not isinstance(dados, dict):
-            return None, "O corpo da requisição deve ser um objeto JSON.", []
+            return None, "O corpo da requisição deve ser um objeto JSON."
 
-        erros = validar_livro(dados)
-        if erros:
-            return None, "Dados do livro inválidos.", erros
-
-        return dados, None, None
+        return dados, None
 
     def do_GET(self):
+        """Lista a coleção de livros ou devolve um livro pelo id."""
         try:
             rota, livro_id = self.identificar_rota()
 
@@ -179,24 +152,25 @@ class LivroHandler(BaseHTTPRequestHandler):
                 self.enviar_erro(400, self.MENSAGEM_ID_INVALIDO)
                 return
 
-            if rota == "item":
-                livro = buscar_livro(livro_id)
-
-                if livro is None:
-                    self.enviar_erro(404, "Livro não encontrado.")
-                    return
-
-                self.enviar_json(200, livro)
+            if rota != "item":
+                self.enviar_erro(404, "Rota não encontrada.")
                 return
 
-            self.enviar_erro(404, "Rota não encontrada.")
+            livro = buscar_livro(livro_id)
+
+            if livro is None:
+                self.enviar_erro(404, "Livro não encontrado.")
+                return
+
+            self.enviar_json(200, livro)
 
         except Exception:
             self.erro_interno()
 
     def do_POST(self):
+        """Cria um livro novo na coleção."""
         try:
-            rota, livro_id = self.identificar_rota()
+            rota, _ = self.identificar_rota()
 
             if rota == "item":
                 self.metodo_nao_permitido("item")
@@ -207,13 +181,19 @@ class LivroHandler(BaseHTTPRequestHandler):
                 return
 
             if rota != "colecao":
-                self.rota_nao_encontrada()
+                self.enviar_erro(404, "Rota não encontrada.")
                 return
 
-            dados, mensagem, detalhes = self.obter_payload()
+            dados, erro = self.ler_corpo()
 
-            if mensagem:
-                self.enviar_erro(400, mensagem, detalhes)
+            if erro:
+                self.enviar_erro(400, erro)
+                return
+
+            erros = validar_livro(dados)
+
+            if erros:
+                self.enviar_erro(400, "Dados do livro inválidos.", erros)
                 return
 
             livro = criar_livro(dados)
@@ -228,6 +208,7 @@ class LivroHandler(BaseHTTPRequestHandler):
             self.erro_interno()
 
     def do_PUT(self):
+        """Substitui por inteiro um livro existente."""
         try:
             rota, livro_id = self.identificar_rota()
 
@@ -240,14 +221,19 @@ class LivroHandler(BaseHTTPRequestHandler):
                 return
 
             if rota != "item":
-                self.rota_nao_encontrada()
+                self.enviar_erro(404, "Rota não encontrada.")
                 return
 
-            # o corpo e lido antes de checar a existencia para nao deixar bytes na conexao
-            dados, mensagem, detalhes = self.obter_payload()
+            dados, erro = self.ler_corpo()
 
-            if mensagem:
-                self.enviar_erro(400, mensagem, detalhes)
+            if erro:
+                self.enviar_erro(400, erro)
+                return
+
+            erros = validar_livro(dados)
+
+            if erros:
+                self.enviar_erro(400, "Dados do livro inválidos.", erros)
                 return
 
             if buscar_livro(livro_id) is None:
@@ -260,6 +246,7 @@ class LivroHandler(BaseHTTPRequestHandler):
             self.erro_interno()
 
     def do_DELETE(self):
+        """Remove um livro do catálogo."""
         try:
             rota, livro_id = self.identificar_rota()
 
@@ -272,21 +259,22 @@ class LivroHandler(BaseHTTPRequestHandler):
                 return
 
             if rota != "item":
-                self.rota_nao_encontrada()
+                self.enviar_erro(404, "Rota não encontrada.")
                 return
 
             if not remover_livro(livro_id):
                 self.enviar_erro(404, "Livro não encontrado.")
                 return
 
-            self.enviar_sem_corpo(204)
+            self.send_response(204)
+            self.end_headers()
 
         except Exception:
             self.erro_interno()
 
 
 def iniciar_servidor():
-
+    """Carrega os dados de exemplo e sobe o servidor HTTP."""
     carregar_dados_exemplo()
 
     servidor = HTTPServer(
