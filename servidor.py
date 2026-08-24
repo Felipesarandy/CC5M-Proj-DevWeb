@@ -28,6 +28,8 @@ class LivroHandler(BaseHTTPRequestHandler):
     sys_version = ""
     protocol_version = "HTTP/1.1"
 
+    MENSAGEM_ID_INVALIDO = "Identificador de livro inválido: deve ser um número inteiro."
+
     METODOS_POR_ROTA = {
         "colecao": ("GET", "HEAD", "POST", "OPTIONS"),
         "item": ("GET", "HEAD", "PUT", "DELETE", "OPTIONS"),
@@ -48,19 +50,19 @@ class LivroHandler(BaseHTTPRequestHandler):
         if caminho != "/":
             caminho = caminho.rstrip("/")
 
-        # /livros
-        if caminho == "/livros":
+        # /api/books
+        if caminho == "/api/books":
             return "colecao", None
 
-        # /livros/3
+        # /api/books/3
         partes = caminho.strip("/").split("/")
 
-        if len(partes) == 2 and partes[0] == "livros":
+        if len(partes) == 3 and partes[0] == "api" and partes[1] == "books":
             try:
-                livro_id = int(partes[1])
-                return "item", livro_id
+                return "item", int(partes[2])
             except ValueError:
-                return None, None
+                # o recurso existe na API, o id e que veio errado
+                return "invalida", None
 
         return None, None
 
@@ -225,6 +227,10 @@ class LivroHandler(BaseHTTPRequestHandler):
                 self.enviar_json(200, listar_livros())
                 return
 
+            if rota == "invalida":
+                self.enviar_erro(400, self.MENSAGEM_ID_INVALIDO)
+                return
+
             if rota == "item":
                 livro = buscar_livro(livro_id)
 
@@ -252,6 +258,10 @@ class LivroHandler(BaseHTTPRequestHandler):
                 self.metodo_nao_permitido("item")
                 return
 
+            if rota == "invalida":
+                self.enviar_erro(400, self.MENSAGEM_ID_INVALIDO)
+                return
+
             if rota != "colecao":
                 self.rota_nao_encontrada()
                 return
@@ -267,7 +277,7 @@ class LivroHandler(BaseHTTPRequestHandler):
             self.enviar_json(
                 201,
                 livro,
-                extras={"Location": "/livros/%d" % livro["id"]}
+                extras={"Location": "/api/books/%d" % livro["id"]}
             )
 
         except Exception:
@@ -279,6 +289,10 @@ class LivroHandler(BaseHTTPRequestHandler):
 
             if rota == "colecao":
                 self.metodo_nao_permitido("colecao")
+                return
+
+            if rota == "invalida":
+                self.enviar_erro(400, self.MENSAGEM_ID_INVALIDO)
                 return
 
             if rota != "item":
@@ -309,6 +323,10 @@ class LivroHandler(BaseHTTPRequestHandler):
                 self.metodo_nao_permitido("colecao")
                 return
 
+            if rota == "invalida":
+                self.enviar_erro(400, self.MENSAGEM_ID_INVALIDO)
+                return
+
             if rota != "item":
                 self.rota_nao_encontrada()
                 return
@@ -326,6 +344,10 @@ class LivroHandler(BaseHTTPRequestHandler):
         try:
             rota, livro_id = self.identificar_rota()
 
+            if rota == "invalida":
+                self.enviar_erro(400, self.MENSAGEM_ID_INVALIDO)
+                return
+
             if rota is None:
                 self.rota_nao_encontrada()
                 return
@@ -339,6 +361,10 @@ class LivroHandler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         try:
             rota, livro_id = self.identificar_rota()
+
+            if rota == "invalida":
+                self.enviar_erro(400, self.MENSAGEM_ID_INVALIDO)
+                return
 
             if rota is None:
                 self.rota_nao_encontrada()
@@ -365,13 +391,13 @@ def iniciar_servidor():
     print("=" * 50)
     print("API de Livros iniciada")
     print(f"Servidor: http://{HOST}:{PORT}")
-    print("GET     /livros")
-    print("GET     /livros/{id}")
-    print("POST    /livros")
-    print("PUT     /livros/{id}")
-    print("DELETE  /livros/{id}")
-    print("HEAD    /livros e /livros/{id}")
-    print("OPTIONS /livros e /livros/{id}")
+    print("GET     /api/books")
+    print("GET     /api/books/{id}")
+    print("POST    /api/books")
+    print("PUT     /api/books/{id}")
+    print("DELETE  /api/books/{id}")
+    print("HEAD    /api/books e /api/books/{id}")
+    print("OPTIONS /api/books e /api/books/{id}")
     print("=" * 50)
     print("Pressione CTRL+C para encerrar.")
 
