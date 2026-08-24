@@ -1,5 +1,6 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse
+# mostrar erros detalhados no terminal
 import traceback
 
 from livros_dados import (
@@ -25,6 +26,7 @@ class LivroHandler(BaseHTTPRequestHandler):
 
     MENSAGEM_ID_INVALIDO = "Identificador de livro inválido: deve ser um número inteiro."
 
+    # quais métodos HTTP podem ser utilizados em cada tipo de rota
     METODOS_POR_ROTA = {
         "colecao": ("GET", "POST"),
         "item": ("GET", "PUT", "DELETE"),
@@ -36,6 +38,28 @@ class LivroHandler(BaseHTTPRequestHandler):
         501: "Método não implementado por este servidor.",
         505: "Versão do HTTP não suportada.",
     }
+
+    def identificar_rota(self):
+        caminho = urlparse(self.path).path
+
+        if caminho != "/":
+            caminho = caminho.rstrip("/")
+
+        # /livros
+        if caminho == "/livros":
+            return "colecao", None
+
+        # /livros/3
+        partes = caminho.strip("/").split("/")
+
+        if len(partes) == 2 and partes[0] == "livros":
+            try:
+                livro_id = int(partes[1])
+                return "item", livro_id
+            except ValueError:
+                return None, None
+
+        return None, None
 
     def enviar_json(self, status, dados, extras=None):
         """Responde com corpo JSON, o status e os headers extras informados."""
