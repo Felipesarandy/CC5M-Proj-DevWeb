@@ -1,5 +1,6 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse
+# mostrar erros detalhados no terminal
 import traceback
 
 from livros_dados import (
@@ -28,6 +29,7 @@ class LivroHandler(BaseHTTPRequestHandler):
     sys_version = ""
     protocol_version = "HTTP/1.1"
 
+    # quais métodos HTTP podem ser utilizados em cada tipo de rota
     METODOS_POR_ROTA = {
         "colecao": ("GET", "HEAD", "POST", "OPTIONS"),
         "item": ("GET", "HEAD", "PUT", "DELETE", "OPTIONS"),
@@ -42,6 +44,7 @@ class LivroHandler(BaseHTTPRequestHandler):
         505: "Versão do HTTP não suportada.",
     }
 
+    # descobre qual recurso está tentando ser acessado
     def identificar_rota(self):
         caminho = urlparse(self.path).path
 
@@ -64,6 +67,7 @@ class LivroHandler(BaseHTTPRequestHandler):
 
         return None, None
 
+    # converte um dicionário, lista Python para JSON e depois bytes
     def enviar_json(self, status, dados, extras=None):
         corpo = dict_para_json(dados)
 
