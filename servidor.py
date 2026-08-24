@@ -14,7 +14,6 @@ from livros_dados import (
     carregar_dados_exemplo
 )
 
-
 HOST = "localhost"
 PORT = 8000
 
