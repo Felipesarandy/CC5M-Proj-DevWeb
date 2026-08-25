@@ -53,6 +53,9 @@ class LivroHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(corpo)
 
+    # Função enviar_erro padroniza o formato de erro da API em um unico
+    # envelope JSON, usada por todos os pontos que precisam responder falha
+
     def enviar_erro(self, status, mensagem, detalhes=None, extras=None):
         """Responde um erro no formato único da API."""
         corpo = {"erro": mensagem}
@@ -62,6 +65,9 @@ class LivroHandler(BaseHTTPRequestHandler):
 
         self.enviar_json(status, corpo, extras)
 
+    # Função metodo_nao_permitido responde 405 e anuncia no header Allow
+    # quais metodos sao aceitos naquela rota, conforme METODOS_POR_ROTA    
+
     def metodo_nao_permitido(self, rota):
         """Responde 405 anunciando no header Allow os métodos aceitos na rota."""
         self.enviar_erro(
@@ -70,6 +76,9 @@ class LivroHandler(BaseHTTPRequestHandler):
             extras={"Allow": ", ".join(self.METODOS_POR_ROTA[rota])}
         )
 
+    # Função erro_interno é a rede de seguranca contra exceção nao prevista:
+    # imprime o traceback so no console e devolve 500 generico ao cliente
+
     def erro_interno(self):
         """Responde 500 e deixa o traceback apenas no console."""
         traceback.print_exc()
@@ -77,6 +86,10 @@ class LivroHandler(BaseHTTPRequestHandler):
             self.enviar_erro(500, "Erro interno do servidor.")
         except Exception:
             pass
+
+    # Função send_error sobrescreve o metodo da propria stdlib para que erros
+    # levantados antes de chegar num do_* (verbo desconhecido, requisicao
+    # malformada) saiam em JSON e nao na pagina HTML padrao
 
     def send_error(self, code, message=None, explain=None):
         """Faz os erros levantados pela stdlib saírem em JSON, não em HTML."""
